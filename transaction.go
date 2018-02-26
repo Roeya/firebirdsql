@@ -45,7 +45,7 @@ func (tx *firebirdsqlTx) begin() (err error) {
 		tpb = []byte{
 			byte(isc_tpb_version3),
 			byte(isc_tpb_write),
-			byte(isc_tpb_wait),
+			byte(isc_tpb_nowait),
 			byte(isc_tpb_read_committed),
 			byte(isc_tpb_rec_version),
 		}
@@ -53,21 +53,21 @@ func (tx *firebirdsqlTx) begin() (err error) {
 		tpb = []byte{
 			byte(isc_tpb_version3),
 			byte(isc_tpb_write),
-			byte(isc_tpb_wait),
+			byte(isc_tpb_nowait),
 			byte(isc_tpb_concurrency),
 		}
 	case ISOLATION_LEVEL_SERIALIZABLE:
 		tpb = []byte{
 			byte(isc_tpb_version3),
 			byte(isc_tpb_write),
-			byte(isc_tpb_wait),
+			byte(isc_tpb_nowait),
 			byte(isc_tpb_consistency),
 		}
 	case ISOLATION_LEVEL_READ_COMMITED_RO:
 		tpb = []byte{
 			byte(isc_tpb_version3),
 			byte(isc_tpb_read),
-			byte(isc_tpb_wait),
+			byte(isc_tpb_nowait),
 			byte(isc_tpb_read_committed),
 			byte(isc_tpb_rec_version),
 		}
@@ -78,24 +78,26 @@ func (tx *firebirdsqlTx) begin() (err error) {
 }
 
 func (tx *firebirdsqlTx) Commit() (err error) {
-	tx.fc.wp.opCommitRetaining(tx.transHandle)
+	tx.fc.wp.opCommit(tx.transHandle)
 	_, _, _, err = tx.fc.wp.opResponse()
-	tx.isAutocommit = tx.fc.isAutocommit
+	//tx.isAutocommit = tx.fc.isAutocommit
+	tx.fc.txTmp = nil
 	return
 }
 
 func (tx *firebirdsqlTx) Rollback() (err error) {
-	tx.fc.wp.opRollbackRetaining(tx.transHandle)
+	tx.fc.wp.opRollback(tx.transHandle)
 	_, _, _, err = tx.fc.wp.opResponse()
-	tx.isAutocommit = tx.fc.isAutocommit
+	//tx.isAutocommit = tx.fc.isAutocommit
+	tx.fc.txTmp = nil
 	return
 }
 
-func newFirebirdsqlTx(fc *firebirdsqlConn, isolationLevel int, isAutocommit bool) (tx *firebirdsqlTx, err error) {
+func newFirebirdsqlTx(fc *firebirdsqlConn, isolationLevel int /*, isAutocommit bool*/) (tx *firebirdsqlTx, err error) {
 	tx = new(firebirdsqlTx)
 	tx.fc = fc
 	tx.isolationLevel = isolationLevel
-	tx.isAutocommit = isAutocommit
+	//tx.isAutocommit = isAutocommit
 	tx.begin()
 	return
 }

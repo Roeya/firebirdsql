@@ -31,24 +31,26 @@ import (
 )
 
 type firebirdsqlConn struct {
-	wp           *wireProtocol
-	tx           *firebirdsqlTx
-	addr         string
-	dbName       string
-	user         string
-	password     string
-	isAutocommit bool
+	wp *wireProtocol
+	//tx           *firebirdsqlTx
+	txTmp    *firebirdsqlTx
+	addr     string
+	dbName   string
+	user     string
+	password string
+	//isAutocommit bool
 	clientPublic *big.Int
 	clientSecret *big.Int
 }
 
 func (fc *firebirdsqlConn) begin(isolationLevel int) (driver.Tx, error) {
-	tx, err := newFirebirdsqlTx(fc, isolationLevel, false)
-	fc.tx = tx
+	tx, err := newFirebirdsqlTx(fc, isolationLevel)
+	fc.txTmp = tx
 	return driver.Tx(tx), err
 }
 
 func (fc *firebirdsqlConn) Begin() (driver.Tx, error) {
+	//fmt.Println("Begin")
 	return fc.begin(ISOLATION_LEVEL_READ_COMMITED)
 }
 
@@ -60,7 +62,14 @@ func (fc *firebirdsqlConn) Close() (err error) {
 }
 
 func (fc *firebirdsqlConn) prepare(ctx context.Context, query string) (driver.Stmt, error) {
-	return newFirebirdsqlStmt(fc, query)
+	/*tx, err := newFirebirdsqlTx(fc, ISOLATION_LEVEL_READ_COMMITED)
+	if err != nil {
+		return nil, err
+	}*/
+
+	///tx := ctx.Value("Transaction").(*firebirdsqlTx)
+
+	return newFirebirdsqlStmt(fc, fc.txTmp, query)
 }
 
 func (fc *firebirdsqlConn) Prepare(query string) (driver.Stmt, error) {
@@ -76,9 +85,16 @@ func (fc *firebirdsqlConn) exec(ctx context.Context, query string, args []driver
 	if err != nil {
 		return
 	}
+
+	/*err = stmt.(*firebirdsqlStmt).tx.Commit()
+	if err != nil {
+		return
+	}
 	if fc.isAutocommit && fc.tx.isAutocommit {
 		fc.tx.Commit()
-	}
+	}*/
+
+	//TODO: Close() error processing?
 	stmt.Close()
 	return
 }
@@ -125,8 +141,8 @@ func newFirebirdsqlConn(dsn string) (fc *firebirdsqlConn, err error) {
 	fc.dbName = dbName
 	fc.user = user
 	fc.password = password
-	fc.isAutocommit = true
-	fc.tx, err = newFirebirdsqlTx(fc, ISOLATION_LEVEL_READ_COMMITED, fc.isAutocommit)
+	//fc.isAutocommit = true
+	//	fc.tx, err = newFirebirdsqlTx(fc, ISOLATION_LEVEL_READ_COMMITED, fc.isAutocommit)
 	fc.clientPublic = clientPublic
 	fc.clientSecret = clientSecret
 
@@ -160,8 +176,8 @@ func createFirebirdsqlConn(dsn string) (fc *firebirdsqlConn, err error) {
 	fc.dbName = dbName
 	fc.user = user
 	fc.password = password
-	fc.isAutocommit = true
-	fc.tx, err = newFirebirdsqlTx(fc, ISOLATION_LEVEL_READ_COMMITED, fc.isAutocommit)
+	//fc.isAutocommit = true
+	//fc.tx, err = newFirebirdsqlTx(fc, ISOLATION_LEVEL_READ_COMMITED, fc.isAutocommit)
 	fc.clientPublic = clientPublic
 	fc.clientSecret = clientSecret
 

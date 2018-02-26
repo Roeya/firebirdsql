@@ -104,10 +104,10 @@ func (stmt *firebirdsqlStmt) Query(args []driver.Value) (rows driver.Rows, err e
 	return stmt.query(context.Background(), args)
 }
 
-func newFirebirdsqlStmt(fc *firebirdsqlConn, query string) (stmt *firebirdsqlStmt, err error) {
+func newFirebirdsqlStmt(fc *firebirdsqlConn, tx *firebirdsqlTx, query string) (stmt *firebirdsqlStmt, err error) {
 	stmt = new(firebirdsqlStmt)
 	stmt.wp = fc.wp
-	stmt.tx = fc.tx
+	stmt.tx = tx
 
 	fc.wp.opAllocateStatement()
 

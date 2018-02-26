@@ -40,7 +40,6 @@ import (
 
 	"github.com/kardianos/osext"
 	"github.com/nyarla/go-crypt"
-	//"unsafe"
 )
 
 const (

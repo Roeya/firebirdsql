@@ -78,6 +78,7 @@ func (fc *firebirdsqlConn) PrepareContext(ctx context.Context, query string) (dr
 }
 
 func (fc *firebirdsqlConn) ExecContext(ctx context.Context, query string, namedargs []driver.NamedValue) (result driver.Result, err error) {
+	//fmt.Println("ExecContext")
 	args := make([]driver.Value, len(namedargs))
 	for i, nv := range namedargs {
 		args[i] = nv.Value
@@ -93,6 +94,7 @@ func (fc *firebirdsqlConn) Ping(ctx context.Context) error {
 }
 
 func (fc *firebirdsqlConn) QueryContext(ctx context.Context, query string, namedargs []driver.NamedValue) (rows driver.Rows, err error) {
+	//fmt.Println("QueryContext")
 	args := make([]driver.Value, len(namedargs))
 	for i, nv := range namedargs {
 		args[i] = nv.Value

@@ -26,6 +26,7 @@ package firebirdsql
 import (
 	"database/sql/driver"
 	"math/big"
+	"net"
 
 	"context"
 )
@@ -38,49 +39,83 @@ type firebirdsqlConn struct {
 	dbName   string
 	user     string
 	password string
+	isBad    bool
 	//isAutocommit bool
 	clientPublic *big.Int
 	clientSecret *big.Int
 }
 
 func (fc *firebirdsqlConn) begin(isolationLevel int) (driver.Tx, error) {
+	if fc.isBad {
+		return nil, driver.ErrBadConn
+	}
 	tx, err := newFirebirdsqlTx(fc, isolationLevel)
+	if err != nil {
+		debugPrintf(fc.wp, "newFirebirdsqlTx error %s\n", err)
+		err = fc.checkError(err)
+		return nil, err
+	}
+
 	fc.txTmp = tx
 	return driver.Tx(tx), err
 }
 
-func (fc *firebirdsqlConn) Begin() (driver.Tx, error) {
-	//fmt.Println("Begin")
-	return fc.begin(ISOLATION_LEVEL_READ_COMMITED)
+func (fc *firebirdsqlConn) Begin() (tx driver.Tx, err error) {
+	if fc.isBad {
+		return nil, driver.ErrBadConn
+	}
+	tx, err = fc.begin(ISOLATION_LEVEL_READ_COMMITED)
+	err = fc.checkError(err)
+	return
 }
 
 func (fc *firebirdsqlConn) Close() (err error) {
-	fc.wp.opDetach()
+	if fc.isBad {
+		return driver.ErrBadConn
+	}
+	err = fc.wp.opDetach()
+	if err != nil {
+		return err
+	}
 	_, _, _, err = fc.wp.opResponse()
 	fc.wp.conn.Close()
 	return
 }
 
-func (fc *firebirdsqlConn) prepare(ctx context.Context, query string) (driver.Stmt, error) {
+func (fc *firebirdsqlConn) prepare(ctx context.Context, query string) (stmt driver.Stmt, err error) {
 	/*tx, err := newFirebirdsqlTx(fc, ISOLATION_LEVEL_READ_COMMITED)
 	if err != nil {
 		return nil, err
 	}*/
 
 	///tx := ctx.Value("Transaction").(*firebirdsqlTx)
+	if fc.isBad {
+		return nil, driver.ErrBadConn
+	}
 
-	return newFirebirdsqlStmt(fc, fc.txTmp, query)
+	stmt, err = newFirebirdsqlStmt(fc, fc.txTmp, query)
+	err = fc.checkError(err)
+	return
 }
 
-func (fc *firebirdsqlConn) Prepare(query string) (driver.Stmt, error) {
-	return fc.prepare(context.Background(), query)
+func (fc *firebirdsqlConn) Prepare(query string) (stmt driver.Stmt, err error) {
+	if fc.isBad {
+		return nil, driver.ErrBadConn
+	}
+	stmt, err = fc.prepare(context.Background(), query)
+	err = fc.checkError(err)
+	return
 }
 
 func (fc *firebirdsqlConn) exec(ctx context.Context, query string, args []driver.Value) (result driver.Result, err error) {
+	if fc.isBad {
+		return nil, driver.ErrBadConn
+	}
 	stmt, err := fc.prepare(ctx, query)
 	if err != nil {
 		return
 	}
+	//TODO: defer stmt.Close() ?
 	result, err = stmt.(*firebirdsqlStmt).exec(ctx, args)
 	if err != nil {
 		return
@@ -100,20 +135,48 @@ func (fc *firebirdsqlConn) exec(ctx context.Context, query string, args []driver
 }
 
 func (fc *firebirdsqlConn) Exec(query string, args []driver.Value) (result driver.Result, err error) {
-	return fc.exec(context.Background(), query, args)
+	if fc.isBad {
+		return nil, driver.ErrBadConn
+	}
+	result, err = fc.exec(context.Background(), query, args)
+	err = fc.checkError(err)
+	return
 }
 
 func (fc *firebirdsqlConn) query(ctx context.Context, query string, args []driver.Value) (rows driver.Rows, err error) {
+	if fc.isBad {
+		return nil, driver.ErrBadConn
+	}
 	stmt, err := fc.prepare(ctx, query)
 	if err != nil {
 		return
 	}
 	rows, err = stmt.(*firebirdsqlStmt).query(ctx, args)
+	err = fc.checkError(err)
 	return
 }
 
 func (fc *firebirdsqlConn) Query(query string, args []driver.Value) (rows driver.Rows, err error) {
-	return fc.query(context.Background(), query, args)
+	if fc.isBad {
+		return nil, driver.ErrBadConn
+	}
+	rows, err = fc.query(context.Background(), query, args)
+	err = fc.checkError(err)
+	return
+}
+
+func (fc *firebirdsqlConn) checkError(err error) error {
+	if err == nil {
+		return nil
+	}
+	debugPrintf(fc.wp, "checkError %s\n", err)
+	_, ok := err.(*net.OpError)
+	if ok {
+		debugPrintf(fc.wp, "checkError: network error, connection gone bad %s\n", err)
+		fc.isBad = true
+		return driver.ErrBadConn
+	}
+	return err
 }
 
 func newFirebirdsqlConn(dsn string) (fc *firebirdsqlConn, err error) {

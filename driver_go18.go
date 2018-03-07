@@ -34,6 +34,9 @@ import (
 )
 
 func (stmt *firebirdsqlStmt) ExecContext(ctx context.Context, namedargs []driver.NamedValue) (result driver.Result, err error) {
+	if stmt.tx.fc.isBad {
+		return nil, driver.ErrBadConn
+	}
 	sort.SliceStable(namedargs, func(i, j int) bool {
 		return namedargs[i].Ordinal < namedargs[j].Ordinal
 	})
@@ -42,51 +45,75 @@ func (stmt *firebirdsqlStmt) ExecContext(ctx context.Context, namedargs []driver
 		args[i] = nv.Value
 	}
 
-	return stmt.exec(ctx, args)
+	result, err = stmt.exec(ctx, args)
+	err = stmt.tx.fc.checkError(err)
+	return
 }
 
 func (stmt *firebirdsqlStmt) QueryContext(ctx context.Context, namedargs []driver.NamedValue) (rows driver.Rows, err error) {
+	if stmt.tx.fc.isBad {
+		return nil, driver.ErrBadConn
+	}
 	args := make([]driver.Value, len(namedargs))
 	for i, nv := range namedargs {
 		args[i] = nv.Value
 	}
 
-	return stmt.query(ctx, args)
+	rows, err = stmt.query(ctx, args)
+	err = stmt.tx.fc.checkError(err)
+	return
 }
 
-func (fc *firebirdsqlConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+func (fc *firebirdsqlConn) BeginTx(ctx context.Context, opts driver.TxOptions) (tx driver.Tx, err error) {
+	if fc.isBad {
+		return nil, driver.ErrBadConn
+	}
 	if opts.ReadOnly {
 		return fc.begin(ISOLATION_LEVEL_READ_COMMITED_RO)
 	}
 
 	switch (sql.IsolationLevel)(opts.Isolation) {
 	case sql.LevelDefault:
-		return fc.begin(ISOLATION_LEVEL_READ_COMMITED)
+		tx, err = fc.begin(ISOLATION_LEVEL_READ_COMMITED)
 	case sql.LevelReadCommitted:
-		return fc.begin(ISOLATION_LEVEL_READ_COMMITED)
+		tx, err = fc.begin(ISOLATION_LEVEL_READ_COMMITED)
 	case sql.LevelRepeatableRead:
-		return fc.begin(ISOLATION_LEVEL_REPEATABLE_READ)
+		tx, err = fc.begin(ISOLATION_LEVEL_REPEATABLE_READ)
 	case sql.LevelSerializable:
-		return fc.begin(ISOLATION_LEVEL_SERIALIZABLE)
+		tx, err = fc.begin(ISOLATION_LEVEL_SERIALIZABLE)
 	default:
+		err = errors.New("This isolation level is not supported.")
 	}
-	return nil, errors.New("This isolation level is not supported.")
+	err = fc.checkError(err)
+	return
 }
 
 func (fc *firebirdsqlConn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
-	return fc.prepare(ctx, query)
+	if fc.isBad {
+		return nil, driver.ErrBadConn
+	}
+	stmt, err := fc.prepare(ctx, query)
+	err = fc.checkError(err)
+	return stmt, err
 }
 
 func (fc *firebirdsqlConn) ExecContext(ctx context.Context, query string, namedargs []driver.NamedValue) (result driver.Result, err error) {
-	//fmt.Println("ExecContext")
+	if fc.isBad {
+		return nil, driver.ErrBadConn
+	}
 	args := make([]driver.Value, len(namedargs))
 	for i, nv := range namedargs {
 		args[i] = nv.Value
 	}
-	return fc.exec(ctx, query, args)
+	result, err = fc.exec(ctx, query, args)
+	err = fc.checkError(err)
+	return
 }
 
 func (fc *firebirdsqlConn) Ping(ctx context.Context) error {
+	if fc.isBad {
+		return driver.ErrBadConn
+	}
 	if fc == nil {
 		return errors.New("Connection was closed")
 	}
@@ -94,10 +121,14 @@ func (fc *firebirdsqlConn) Ping(ctx context.Context) error {
 }
 
 func (fc *firebirdsqlConn) QueryContext(ctx context.Context, query string, namedargs []driver.NamedValue) (rows driver.Rows, err error) {
-	//fmt.Println("QueryContext")
+	if fc.isBad {
+		return nil, driver.ErrBadConn
+	}
 	args := make([]driver.Value, len(namedargs))
 	for i, nv := range namedargs {
 		args[i] = nv.Value
 	}
-	return fc.query(ctx, query, args)
+	rows, err = fc.query(ctx, query, args)
+	err = fc.checkError(err)
+	return
 }

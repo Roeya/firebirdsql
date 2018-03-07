@@ -23,6 +23,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 package firebirdsql
 
+import (
+	"database/sql/driver"
+	"fmt"
+)
+
 type firebirdsqlTx struct {
 	fc             *firebirdsqlConn
 	isolationLevel int
@@ -30,7 +35,10 @@ type firebirdsqlTx struct {
 	transHandle    int32
 }
 
-func (tx *firebirdsqlTx) begin() (err error) {
+func (tx *firebirdsqlTx) begin() error {
+	if tx.fc.isBad {
+		return driver.ErrBadConn
+	}
 	var tpb []byte
 	switch tx.isolationLevel {
 	case ISOLATION_LEVEL_READ_COMMITED_LEGACY:
@@ -71,25 +79,58 @@ func (tx *firebirdsqlTx) begin() (err error) {
 			byte(isc_tpb_read_committed),
 			byte(isc_tpb_rec_version),
 		}
+	default:
+		return fmt.Errorf("Invalid isolation level %d", tx.isolationLevel)
 	}
-	tx.fc.wp.opTransaction(tpb)
+	err := tx.fc.wp.opTransaction(tpb)
+	if err != nil {
+		debugPrintf(tx.fc.wp, "tx.Begin: opTransaction error %s\n", err)
+		return err
+	}
 	tx.transHandle, _, _, err = tx.fc.wp.opResponse()
-	return
+	if err != nil {
+		debugPrintf(tx.fc.wp, "tx.Begin: opResponse error %s\n", err)
+		return err
+	}
+	return nil
 }
 
 func (tx *firebirdsqlTx) Commit() (err error) {
-	tx.fc.wp.opCommit(tx.transHandle)
-	_, _, _, err = tx.fc.wp.opResponse()
-	//tx.isAutocommit = tx.fc.isAutocommit
 	tx.fc.txTmp = nil
+	if tx.fc.isBad {
+		return driver.ErrBadConn
+	}
+	err = tx.fc.wp.opCommit(tx.transHandle)
+	if err != nil {
+		debugPrintf(tx.fc.wp, "Commit: opCommit error %s", err)
+		return err
+	}
+	_, _, _, err = tx.fc.wp.opResponse()
+	if err != nil {
+		debugPrintf(tx.fc.wp, "Commit: opResponse error %s", err)
+		return err
+	}
+	//tx.isAutocommit = tx.fc.isAutocommit
+
 	return
 }
 
 func (tx *firebirdsqlTx) Rollback() (err error) {
-	tx.fc.wp.opRollback(tx.transHandle)
-	_, _, _, err = tx.fc.wp.opResponse()
-	//tx.isAutocommit = tx.fc.isAutocommit
 	tx.fc.txTmp = nil
+	if tx.fc.isBad {
+		return driver.ErrBadConn
+	}
+	tx.fc.wp.opRollback(tx.transHandle)
+	if err != nil {
+		debugPrintf(tx.fc.wp, "Rollback: opRollback error %s", err)
+		return err
+	}
+	_, _, _, err = tx.fc.wp.opResponse()
+	if err != nil {
+		debugPrintf(tx.fc.wp, "Rollback: opResponse error %s", err)
+		return err
+	}
+	//tx.isAutocommit = tx.fc.isAutocommit
 	return
 }
 
@@ -98,6 +139,6 @@ func newFirebirdsqlTx(fc *firebirdsqlConn, isolationLevel int /*, isAutocommit b
 	tx.fc = fc
 	tx.isolationLevel = isolationLevel
 	//tx.isAutocommit = isAutocommit
-	tx.begin()
+	err = tx.begin()
 	return
 }

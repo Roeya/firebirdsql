@@ -362,19 +362,56 @@ func (p *wireProtocol) _parse_status_vector() (*list.List, int, string, error) {
 	return gds_codes, sql_code, message, err
 }
 
+type statusVectorError struct {
+	message       string
+	sql_code      int
+	gds_code_list *list.List
+}
+
+func (r *statusVectorError) Error() string {
+	var s string
+	for e := r.gds_code_list.Front(); e != nil; e = e.Next() {
+		s = s + fmt.Sprintf("%v", e.Value) + ";"
+	}
+
+	return fmt.Sprintf("%s %d %s", r.message, r.sql_code, s)
+}
+
+func (r *statusVectorError) HasGDSError(gdsCode int) bool {
+	for e := r.gds_code_list.Front(); e != nil; e = e.Next() {
+		code, ok := e.Value.(int)
+		if !ok {
+			continue
+		}
+		if code == gdsCode {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *wireProtocol) _parse_op_response() (int32, []byte, []byte, error) {
 	b, err := p.recvPackets(16)
 	h := bytes_to_bint32(b[0:4])            // Object handle
 	oid := b[4:12]                          // Object ID
 	buf_len := int(bytes_to_bint32(b[12:])) // buffer length
 	buf, err := p.recvPacketsAlignment(buf_len)
+	if err != nil {
+		return 0, nil, nil, err
+	}
 
 	gds_code_list, sql_code, message, err := p._parse_status_vector()
+	if err != nil {
+		debugPrintf(p, "_parse_op_response: _parse_status_vector error %s", err)
+		return 0, nil, nil, err
+	}
 	if gds_code_list.Len() > 0 || sql_code != 0 {
-		if err != nil {
-			message = err.Error() + " " + message
+		err = &statusVectorError{
+			message:       message,
+			sql_code:      sql_code,
+			gds_code_list: gds_code_list,
 		}
-		err = errors.New(message)
+		return 0, nil, nil, err
 	}
 
 	return h, oid, buf, err

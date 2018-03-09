@@ -29,6 +29,7 @@ import (
 	"net"
 
 	"context"
+	"io"
 )
 
 type firebirdsqlConn struct {
@@ -169,10 +170,22 @@ func (fc *firebirdsqlConn) checkError(err error) error {
 	if err == nil {
 		return nil
 	}
-	debugPrintf(fc.wp, "checkError %s\n", err)
+	debugPrintf(fc.wp, "checkError %T %s\n", err, err)
+	if err == io.EOF {
+		//connection is closed by server, delete from mon$attachments
+		debugPrintf(fc.wp, "checkError: network connection closed by server, connection gone bad %s\n", err)
+		fc.isBad = true
+		return driver.ErrBadConn
+	}
 	_, ok := err.(*net.OpError)
 	if ok {
 		debugPrintf(fc.wp, "checkError: network error, connection gone bad %s\n", err)
+		fc.isBad = true
+		return driver.ErrBadConn
+	}
+	sve, ok := err.(*statusVectorError)
+	if ok && sve.HasGDSError(335544856) { //isc_att_shutdown
+		debugPrintf(fc.wp, "checkError: attachment shutdown, connection gone bad  %s\n", err)
 		fc.isBad = true
 		return driver.ErrBadConn
 	}

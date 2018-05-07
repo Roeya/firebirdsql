@@ -84,12 +84,12 @@ func (tx *firebirdsqlTx) begin() error {
 	}
 	err := tx.fc.wp.opTransaction(tpb)
 	if err != nil {
-		debugPrintf(tx.fc.wp, "tx.Begin: opTransaction error %s\n", err)
+		errorPrintf(tx.fc.wp, "tx.Begin: opTransaction error %s\n", err)
 		return err
 	}
 	tx.transHandle, _, _, err = tx.fc.wp.opResponse()
 	if err != nil {
-		debugPrintf(tx.fc.wp, "tx.Begin: opResponse error %s\n", err)
+		errorPrintf(tx.fc.wp, "tx.Begin: opResponse error %s\n", err)
 		return err
 	}
 	return nil
@@ -102,12 +102,12 @@ func (tx *firebirdsqlTx) Commit() (err error) {
 	}
 	err = tx.fc.wp.opCommit(tx.transHandle)
 	if err != nil {
-		debugPrintf(tx.fc.wp, "Commit: opCommit error %s", err)
+		errorPrintf(tx.fc.wp, "Commit: opCommit error %s", err)
 		return err
 	}
 	_, _, _, err = tx.fc.wp.opResponse()
 	if err != nil {
-		debugPrintf(tx.fc.wp, "Commit: opResponse error %s", err)
+		errorPrintf(tx.fc.wp, "Commit: opResponse error %s", err)
 		return err
 	}
 	//tx.isAutocommit = tx.fc.isAutocommit
@@ -122,12 +122,12 @@ func (tx *firebirdsqlTx) Rollback() (err error) {
 	}
 	tx.fc.wp.opRollback(tx.transHandle)
 	if err != nil {
-		debugPrintf(tx.fc.wp, "Rollback: opRollback error %s", err)
+		errorPrintf(tx.fc.wp, "Rollback: opRollback error %s", err)
 		return err
 	}
 	_, _, _, err = tx.fc.wp.opResponse()
 	if err != nil {
-		debugPrintf(tx.fc.wp, "Rollback: opResponse error %s", err)
+		errorPrintf(tx.fc.wp, "Rollback: opResponse error %s", err)
 		return err
 	}
 	//tx.isAutocommit = tx.fc.isAutocommit

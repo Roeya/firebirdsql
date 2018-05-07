@@ -52,7 +52,7 @@ func (fc *firebirdsqlConn) begin(isolationLevel int) (driver.Tx, error) {
 	}
 	tx, err := newFirebirdsqlTx(fc, isolationLevel)
 	if err != nil {
-		debugPrintf(fc.wp, "newFirebirdsqlTx error %s\n", err)
+		errorPrintf(fc.wp, "newFirebirdsqlTx error %s\n", err)
 		err = fc.checkError(err)
 		return nil, err
 	}
@@ -85,9 +85,9 @@ func (fc *firebirdsqlConn) Close() (err error) {
 
 func (fc *firebirdsqlConn) prepare(ctx context.Context, query string) (stmt driver.Stmt, err error) {
 	/*tx, err := newFirebirdsqlTx(fc, ISOLATION_LEVEL_READ_COMMITED)
-	if err != nil {
-		return nil, err
-	}*/
+	  if err != nil {
+	      return nil, err
+	  }*/
 
 	///tx := ctx.Value("Transaction").(*firebirdsqlTx)
 	if fc.isBad {
@@ -123,12 +123,12 @@ func (fc *firebirdsqlConn) exec(ctx context.Context, query string, args []driver
 	}
 
 	/*err = stmt.(*firebirdsqlStmt).tx.Commit()
-	if err != nil {
-		return
-	}
-	if fc.isAutocommit && fc.tx.isAutocommit {
-		fc.tx.Commit()
-	}*/
+	  if err != nil {
+	      return
+	  }
+	  if fc.isAutocommit && fc.tx.isAutocommit {
+	      fc.tx.Commit()
+	  }*/
 
 	//TODO: Close() error processing?
 	stmt.Close()
@@ -170,22 +170,22 @@ func (fc *firebirdsqlConn) checkError(err error) error {
 	if err == nil {
 		return nil
 	}
-	debugPrintf(fc.wp, "checkError %T %s\n", err, err)
+	errorPrintf(fc.wp, "checkError %T %s\n", err, err)
 	if err == io.EOF {
 		//connection is closed by server, delete from mon$attachments
-		debugPrintf(fc.wp, "checkError: network connection closed by server, connection gone bad %s\n", err)
+		errorPrintf(fc.wp, "checkError: network connection closed by server, connection gone bad %s\n", err)
 		fc.isBad = true
 		return driver.ErrBadConn
 	}
 	_, ok := err.(*net.OpError)
 	if ok {
-		debugPrintf(fc.wp, "checkError: network error, connection gone bad %s\n", err)
+		errorPrintf(fc.wp, "checkError: network error, connection gone bad %s\n", err)
 		fc.isBad = true
 		return driver.ErrBadConn
 	}
 	sve, ok := err.(*statusVectorError)
 	if ok && sve.HasGDSError(335544856) { //isc_att_shutdown
-		debugPrintf(fc.wp, "checkError: attachment shutdown, connection gone bad  %s\n", err)
+		errorPrintf(fc.wp, "checkError: attachment shutdown, connection gone bad  %s\n", err)
 		fc.isBad = true
 		return driver.ErrBadConn
 	}
@@ -218,7 +218,7 @@ func newFirebirdsqlConn(dsn string) (fc *firebirdsqlConn, err error) {
 	fc.user = user
 	fc.password = password
 	//fc.isAutocommit = true
-	//	fc.tx, err = newFirebirdsqlTx(fc, ISOLATION_LEVEL_READ_COMMITED, fc.isAutocommit)
+	//  fc.tx, err = newFirebirdsqlTx(fc, ISOLATION_LEVEL_READ_COMMITED, fc.isAutocommit)
 	fc.clientPublic = clientPublic
 	fc.clientSecret = clientSecret
 

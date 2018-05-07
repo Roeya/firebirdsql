@@ -54,7 +54,11 @@ func debugPrint(p *wireProtocol, s string) {
 }
 
 func debugPrintf(p *wireProtocol, format string, args ...interface{}) {
-	fmt.Printf(format, args...)
+	//fmt.Printf(format, args...)
+}
+
+func errorPrintf(p *wireProtocol, format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, format, args...)
 }
 
 func _INFO_SQL_SELECT_DESCRIBE_VARS() []byte {
@@ -245,13 +249,13 @@ func (p *wireProtocol) uid(user string, password string, authPluginName string, 
 }
 
 func (p *wireProtocol) sendPackets() (written int, err error) {
-	debugPrint(p, fmt.Sprintf("\tsendPackets():%v", p.buf))
+	debugPrintf(p, "\tsendPackets():%v", p.buf)
 	n := 0
 	for written < len(p.buf) {
 		n, err = p.conn.Write(p.buf[written:])
 		written += n
 		if err != nil {
-			debugPrint(p, fmt.Sprintf("sendPackets: conn.Write error %s", err))
+			errorPrintf(p, "sendPackets: conn.Write error %s", err)
 			return n, err
 		}
 	}
@@ -260,14 +264,14 @@ func (p *wireProtocol) sendPackets() (written int, err error) {
 }
 
 func (p *wireProtocol) suspendBuffer() []byte {
-	debugPrint(p, fmt.Sprintf("\tsuspendBuffer():%v", p.buf))
+	debugPrintf(p, "\tsuspendBuffer():%v", p.buf)
 	buf := p.buf
 	p.buf = make([]byte, 0, BUFFER_LEN)
 	return buf
 }
 
 func (p *wireProtocol) resumeBuffer(buf []byte) {
-	debugPrint(p, fmt.Sprintf("\tresumeBuffer():%v", buf))
+	debugPrintf(p, "\tresumeBuffer():%v", buf)
 	p.buf = buf
 }
 
@@ -279,12 +283,12 @@ func (p *wireProtocol) recvPackets(n int) ([]byte, error) {
 	for totalRead < n {
 		read, err = p.conn.Read(buf[totalRead:n])
 		if err != nil {
-			debugPrint(p, fmt.Sprintf("\trecvPackets():%v:%v", buf, err))
+			errorPrintf(p, "\trecvPackets():%v:%v", buf, err)
 			return buf, err
 		}
 		totalRead += read
 	}
-	debugPrint(p, fmt.Sprintf("\trecvPackets():%v:%v", buf, err))
+	debugPrintf(p, "\trecvPackets():%v:%v", buf, err)
 	return buf, err
 }
 
@@ -329,7 +333,7 @@ func (p *wireProtocol) _parse_status_vector() (*list.List, int, string, error) {
 			nbytes := int(bytes_to_bint32(b))
 			b, err = p.recvPacketsAlignment(nbytes)
 			if err != nil {
-				debugPrintf(p, "_parse_status_vector: recvPacketsAlignment error %s\n", err)
+				errorPrintf(p, "_parse_status_vector: recvPacketsAlignment error %s\n", err)
 				return nil, 0, "", err
 			}
 			s := bytes_to_str(b)
@@ -340,7 +344,7 @@ func (p *wireProtocol) _parse_status_vector() (*list.List, int, string, error) {
 			nbytes := int(bytes_to_bint32(b))
 			b, err = p.recvPacketsAlignment(nbytes)
 			if err != nil {
-				debugPrintf(p, "_parse_status_vector: recvPacketsAlignment error %s\n", err)
+				errorPrintf(p, "_parse_status_vector: recvPacketsAlignment error %s\n", err)
 				return nil, 0, "", err
 			}
 			s := bytes_to_str(b)
@@ -350,7 +354,7 @@ func (p *wireProtocol) _parse_status_vector() (*list.List, int, string, error) {
 			nbytes := int(bytes_to_bint32(b))
 			b, err = p.recvPacketsAlignment(nbytes)
 			if err != nil {
-				debugPrintf(p, "_parse_status_vector: recvPacketsAlignment error %s\n", err)
+				errorPrintf(p, "_parse_status_vector: recvPacketsAlignment error %s\n", err)
 				return nil, 0, "", err
 			}
 			_ = bytes_to_str(b) // skip status code
@@ -402,7 +406,7 @@ func (p *wireProtocol) _parse_op_response() (int32, []byte, []byte, error) {
 
 	gds_code_list, sql_code, message, err := p._parse_status_vector()
 	if err != nil {
-		debugPrintf(p, "_parse_op_response: _parse_status_vector error %s", err)
+		errorPrintf(p, "_parse_op_response: _parse_status_vector error %s", err)
 		return 0, nil, nil, err
 	}
 	if gds_code_list.Len() > 0 || sql_code != 0 {
@@ -514,7 +518,7 @@ func (p *wireProtocol) parse_xsqlda(buf []byte, stmtHandle int32) (int32, []xSQL
 			xsqlda = make([]xSQLVAR, col_len)
 			next_index, err = p._parse_select_items(buf[i+ln:], xsqlda)
 			if err != nil {
-				debugPrint(p, fmt.Sprintf("parse_xsqlda: _parse_select_items error %s", err))
+				errorPrintf(p, "parse_xsqlda: _parse_select_items error %s", err)
 				return 0, nil, err
 			}
 			for next_index > 0 { // more describe vars
@@ -527,7 +531,7 @@ func (p *wireProtocol) parse_xsqlda(buf []byte, stmtHandle int32) (int32, []xSQL
 
 				_, _, rbuf, err = p.opResponse()
 				if err != nil {
-					debugPrint(p, fmt.Sprintf("parse_xsqlda: opResponse error %s", err))
+					errorPrintf(p, "parse_xsqlda: opResponse error %s", err)
 					return 0, nil, err
 				}
 				// buf[:2] == []byte{0x04,0x07}
@@ -535,7 +539,7 @@ func (p *wireProtocol) parse_xsqlda(buf []byte, stmtHandle int32) (int32, []xSQL
 				// bytes_to_int(rbuf[4:4+l]) == col_len
 				next_index, err = p._parse_select_items(rbuf[4+ln:], xsqlda)
 				if err != nil {
-					debugPrint(p, fmt.Sprintf("parse_xsqlda: _parse_select_items error %s", err))
+					errorPrintf(p, "parse_xsqlda: _parse_select_items error %s", err)
 					return 0, nil, err
 				}
 			}
@@ -671,7 +675,7 @@ func (p *wireProtocol) opAccept(user string, password string, authPluginName str
 		var data []byte
 		data, err = p.recvPacketsAlignment(ln)
 		if err != nil {
-			debugPrintf(p, "opAccept: recvPacketsAlignment error %s\n", err)
+			errorPrintf(p, "opAccept: recvPacketsAlignment error %s\n", err)
 			return err
 		}
 
@@ -680,14 +684,14 @@ func (p *wireProtocol) opAccept(user string, password string, authPluginName str
 		var pluginName []byte
 		pluginName, err = p.recvPacketsAlignment(ln)
 		if err != nil {
-			debugPrintf(p, "opAccept: recvPacketsAlignment error %s\n", err)
+			errorPrintf(p, "opAccept: recvPacketsAlignment error %s\n", err)
 			return err
 		}
 		p.pluginName = bytes_to_str(pluginName)
 
 		b, err = p.recvPackets(4)
 		if err != nil {
-			debugPrintf(p, "opAccept: recvPackets error %s\n", err)
+			errorPrintf(p, "opAccept: recvPackets error %s\n", err)
 			return err
 		}
 		isAuthenticated := bytes_to_bint32(b)
@@ -695,13 +699,13 @@ func (p *wireProtocol) opAccept(user string, password string, authPluginName str
 
 		b, err = p.recvPackets(4)
 		if err != nil {
-			debugPrintf(p, "opAccept: recvPackets error %s\n", err)
+			errorPrintf(p, "opAccept: recvPackets error %s\n", err)
 			return err
 		}
 		ln = int(bytes_to_bint32(b))
 		_, err = p.recvPacketsAlignment(ln) // keys
 		if err != nil {
-			debugPrintf(p, "opAccept: recvPacketsAlignment error %s\n", err)
+			errorPrintf(p, "opAccept: recvPacketsAlignment error %s\n", err)
 			return err
 		}
 
@@ -732,7 +736,7 @@ func (p *wireProtocol) opAccept(user string, password string, authPluginName str
 				p.packString("")
 				_, err = p.sendPackets()
 				if err != nil {
-					debugPrintf(p, "opAccept: sendPackets error %s\n", err)
+					errorPrintf(p, "opAccept: sendPackets error %s\n", err)
 					return
 				}
 
@@ -747,14 +751,14 @@ func (p *wireProtocol) opAccept(user string, password string, authPluginName str
 				p.packString("Symmetric")
 				_, err = p.sendPackets()
 				if err != nil {
-					debugPrintf(p, "opAccept: sendPackets error %s\n", err)
+					errorPrintf(p, "opAccept: sendPackets error %s\n", err)
 					return
 				}
 				p.conn.setAuthKey(sessionKey)
 
 				_, _, _, err = p.opResponse()
 				if err != nil {
-					debugPrintf(p, "opAccept: opResponse error %s\n", err)
+					errorPrintf(p, "opAccept: opResponse error %s\n", err)
 					return
 				}
 			} else {
@@ -829,55 +833,55 @@ func (p *wireProtocol) opTransaction(tpb []byte) error {
 	p.packBytes(tpb)
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opTransaction: sendPackets error %s\n", err)
+		errorPrintf(p, "opTransaction: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
 }
 
 func (p *wireProtocol) opCommit(transHandle int32) error {
-	debugPrint(p, fmt.Sprintf("opCommit():%d", transHandle))
+	debugPrintf(p, "opCommit():%d", transHandle)
 	p.packInt(op_commit)
 	p.packInt(transHandle)
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opCommit: sendPackets error %s\n", err)
+		errorPrintf(p, "opCommit: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
 }
 
 func (p *wireProtocol) opCommitRetaining(transHandle int32) error {
-	debugPrint(p, fmt.Sprintf("opCommitRetaining():%d", transHandle))
+	debugPrintf(p, "opCommitRetaining():%d", transHandle)
 	p.packInt(op_commit_retaining)
 	p.packInt(transHandle)
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opCommitRetaining: sendPackets error %s\n", err)
+		errorPrintf(p, "opCommitRetaining: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
 }
 
 func (p *wireProtocol) opRollback(transHandle int32) error {
-	debugPrint(p, fmt.Sprintf("opRollback():%d", transHandle))
+	debugPrintf(p, "opRollback():%d", transHandle)
 	p.packInt(op_rollback)
 	p.packInt(transHandle)
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opRollback: sendPackets error %s\n", err)
+		errorPrintf(p, "opRollback: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
 }
 
 func (p *wireProtocol) opRollbackRetaining(transHandle int32) error {
-	debugPrint(p, fmt.Sprintf("opRollbackRetaining():%d", transHandle))
+	debugPrintf(p, "opRollbackRetaining():%d", transHandle)
 	p.packInt(op_rollback_retaining)
 	p.packInt(transHandle)
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opRollbackRetaining: sendPackets error %s\n", err)
+		errorPrintf(p, "opRollbackRetaining: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
@@ -889,7 +893,7 @@ func (p *wireProtocol) opAllocateStatement() error {
 	p.packInt(p.dbHandle)
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opAllocateStatement: sendPackets error %s\n", err)
+		errorPrintf(p, "opAllocateStatement: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
@@ -904,7 +908,7 @@ func (p *wireProtocol) opInfoTransaction(transHandle int32, b []byte) error {
 	p.packInt(int32(BUFFER_LEN))
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opInfoTransaction: sendPackets error %s\n", err)
+		errorPrintf(p, "opInfoTransaction: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
@@ -919,27 +923,27 @@ func (p *wireProtocol) opInfoDatabase(bs []byte) error {
 	p.packInt(int32(BUFFER_LEN))
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opInfoDatabase: sendPackets error %s\n", err)
+		errorPrintf(p, "opInfoDatabase: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
 }
 
 func (p *wireProtocol) opFreeStatement(stmtHandle int32, mode int32) error {
-	debugPrint(p, fmt.Sprintf("opFreeStatement:<%v>", stmtHandle))
+	debugPrintf(p, "opFreeStatement:<%v>", stmtHandle)
 	p.packInt(op_free_statement)
 	p.packInt(stmtHandle)
 	p.packInt(mode)
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opFreeStatement: sendPackets error %s\n", err)
+		errorPrintf(p, "opFreeStatement: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
 }
 
 func (p *wireProtocol) opPrepareStatement(stmtHandle int32, transHandle int32, query string) error {
-	debugPrint(p, fmt.Sprintf("opPrepareStatement():%d,%d,%v", transHandle, stmtHandle, query))
+	debugPrintf(p, "opPrepareStatement():%d,%d,%v", transHandle, stmtHandle, query)
 
 	bs := bytes.Join([][]byte{
 		[]byte{isc_info_sql_stmt_type},
@@ -954,7 +958,7 @@ func (p *wireProtocol) opPrepareStatement(stmtHandle int32, transHandle int32, q
 	p.packInt(int32(BUFFER_LEN))
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opPrepareStatement: sendPackets error %s\n", err)
+		errorPrintf(p, "opPrepareStatement: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
@@ -969,14 +973,14 @@ func (p *wireProtocol) opInfoSql(stmtHandle int32, vars []byte) error {
 	p.packInt(int32(BUFFER_LEN))
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opInfoSql: sendPackets error %s\n", err)
+		errorPrintf(p, "opInfoSql: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
 }
 
 func (p *wireProtocol) opExecute(stmtHandle int32, transHandle int32, params []driver.Value) error {
-	debugPrint(p, fmt.Sprintf("opExecute():%d,%d,%v", transHandle, stmtHandle, params))
+	debugPrintf(p, "opExecute():%d,%d,%v", transHandle, stmtHandle, params)
 	p.packInt(op_execute)
 	p.packInt(stmtHandle)
 	p.packInt(transHandle)
@@ -995,7 +999,7 @@ func (p *wireProtocol) opExecute(stmtHandle int32, transHandle int32, params []d
 
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opExecute: sendPackets error %s\n", err)
+		errorPrintf(p, "opExecute: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
@@ -1023,7 +1027,7 @@ func (p *wireProtocol) opExecute2(stmtHandle int32, transHandle int32, params []
 	p.packInt(0)
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opExecute2: sendPackets error %s\n", err)
+		errorPrintf(p, "opExecute2: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
@@ -1038,7 +1042,7 @@ func (p *wireProtocol) opFetch(stmtHandle int32, blr []byte) error {
 	p.packInt(400)
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opFetch: sendPackets error %s\n", err)
+		errorPrintf(p, "opFetch: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
@@ -1048,13 +1052,13 @@ func (p *wireProtocol) opFetchResponse(stmtHandle int32, transHandle int32, xsql
 	debugPrint(p, "opFetchResponse")
 	b, err := p.recvPackets(4)
 	if err != nil {
-		debugPrintf(p, "opFetchResponse: recvPackets error %s\n", err)
+		errorPrintf(p, "opFetchResponse: recvPackets error %s\n", err)
 		return nil, false, err
 	}
 	for bytes_to_bint32(b) == op_dummy {
 		b, err = p.recvPackets(4)
 		if err != nil {
-			debugPrintf(p, "opFetchResponse: recvPackets error %s\n", err)
+			errorPrintf(p, "opFetchResponse: recvPackets error %s\n", err)
 			return nil, false, err
 		}
 	}
@@ -1064,7 +1068,7 @@ func (p *wireProtocol) opFetchResponse(stmtHandle int32, transHandle int32, xsql
 		p._parse_op_response()
 		b, err = p.recvPackets(4)
 		if err != nil {
-			debugPrintf(p, "opFetchResponse: recvPackets error %s\n", err)
+			errorPrintf(p, "opFetchResponse: recvPackets error %s\n", err)
 			return nil, false, err
 		}
 	}
@@ -1072,7 +1076,7 @@ func (p *wireProtocol) opFetchResponse(stmtHandle int32, transHandle int32, xsql
 		if bytes_to_bint32(b) == op_response {
 			_, _, _, err := p._parse_op_response()
 			if err != nil {
-				debugPrintf(p, "opFetchResponse: recvPacket_parse_op_response error %s\n", err)
+				errorPrintf(p, "opFetchResponse: recvPacket_parse_op_response error %s\n", err)
 				return nil, false, err
 			}
 		}
@@ -1096,12 +1100,12 @@ func (p *wireProtocol) opFetchResponse(stmtHandle int32, transHandle int32, xsql
 				}
 				raw_value, err := p.recvPacketsAlignment(ln)
 				if err != nil {
-					debugPrintf(p, "opFetchResponse: recvPacketsAlignment error %s\n", err)
+					errorPrintf(p, "opFetchResponse: recvPacketsAlignment error %s\n", err)
 					return nil, false, err
 				}
 				b, err = p.recvPackets(4)
 				if err != nil {
-					debugPrintf(p, "opFetchResponse: recvPacketsAlignment error %s\n", err)
+					errorPrintf(p, "opFetchResponse: recvPacketsAlignment error %s\n", err)
 					return nil, false, err
 				}
 				if bytes_to_bint32(b) == 0 { // Not NULL
@@ -1117,7 +1121,7 @@ func (p *wireProtocol) opFetchResponse(stmtHandle int32, transHandle int32, xsql
 			null_indicator := new(big.Int)
 			b, err := p.recvPacketsAlignment(n)
 			if err != nil {
-				debugPrintf(p, "opFetchResponse: recvPacketsAlignment error %s\n", err)
+				errorPrintf(p, "opFetchResponse: recvPacketsAlignment error %s\n", err)
 				return nil, false, err
 			}
 			for n = len(b); n > 0; n-- {
@@ -1139,7 +1143,7 @@ func (p *wireProtocol) opFetchResponse(stmtHandle int32, transHandle int32, xsql
 				}
 				raw_value, err := p.recvPacketsAlignment(ln)
 				if err != nil {
-					debugPrintf(p, "opFetchResponse: recvPacketsAlignment error %s\n", err)
+					errorPrintf(p, "opFetchResponse: recvPacketsAlignment error %s\n", err)
 					return nil, false, err
 				}
 				r[i], err = x.value(raw_value)
@@ -1150,7 +1154,7 @@ func (p *wireProtocol) opFetchResponse(stmtHandle int32, transHandle int32, xsql
 
 		b, err = p.recvPackets(12)
 		if err != nil {
-			debugPrintf(p, "opFetchResponse: recvPackets error %s\n", err)
+			errorPrintf(p, "opFetchResponse: recvPackets error %s\n", err)
 			return nil, false, err
 		}
 		// op := int(bytes_to_bint32(b[:4]))
@@ -1167,7 +1171,7 @@ func (p *wireProtocol) opDetach() error {
 	p.packInt(p.dbHandle)
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opDetach: sendPackets error %s\n", err)
+		errorPrintf(p, "opDetach: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
@@ -1180,7 +1184,7 @@ func (p *wireProtocol) opOpenBlob(blobId []byte, transHandle int32) error {
 	p.appendBytes(blobId)
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opOpenBlob: sendPackets error %s\n", err)
+		errorPrintf(p, "opOpenBlob: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
@@ -1195,7 +1199,7 @@ func (p *wireProtocol) opCreateBlob2(transHandle int32) error {
 	p.packInt(0)
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opCreateBlob2: sendPackets error %s\n", err)
+		errorPrintf(p, "opCreateBlob2: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
@@ -1209,7 +1213,7 @@ func (p *wireProtocol) opGetSegment(blobHandle int32) error {
 	p.packInt(0)
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opGetSegment: sendPackets error %s\n", err)
+		errorPrintf(p, "opGetSegment: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
@@ -1227,7 +1231,7 @@ func (p *wireProtocol) opPutSegment(blobHandle int32, seg_data []byte) error {
 	p.appendBytes(padding[:((4 - ln) & 3)])
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opPutSegment: sendPackets error %s\n", err)
+		errorPrintf(p, "opPutSegment: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
@@ -1247,7 +1251,7 @@ func (p *wireProtocol) opBatchSegments(blobHandle int32, seg_data []byte) error 
 	p.packBytes(padding)
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opBatchSegments: sendPackets error %s\n", err)
+		errorPrintf(p, "opBatchSegments: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
@@ -1259,7 +1263,7 @@ func (p *wireProtocol) opCloseBlob(blobHandle int32) error {
 	p.packInt(blobHandle)
 	_, err := p.sendPackets()
 	if err != nil {
-		debugPrintf(p, "opCloseBlob: sendPackets error %s\n", err)
+		errorPrintf(p, "opCloseBlob: sendPackets error %s\n", err)
 		return err
 	}
 	return nil
@@ -1269,13 +1273,13 @@ func (p *wireProtocol) opResponse() (int32, []byte, []byte, error) {
 	debugPrint(p, "opResponse")
 	b, err := p.recvPackets(4)
 	if err != nil {
-		debugPrint(p, fmt.Sprintf("opResponse: recvPackets error %s", err))
+		errorPrintf(p, "opResponse: recvPackets error %s", err)
 		return 0, nil, nil, err
 	}
 	for bytes_to_bint32(b) == op_dummy {
 		b, err = p.recvPackets(4)
 		if err != nil {
-			debugPrint(p, fmt.Sprintf("opResponse: recvPackets error %s", err))
+			errorPrintf(p, "opResponse: recvPackets error %s", err)
 			return 0, nil, nil, err
 		}
 	}
@@ -1284,7 +1288,7 @@ func (p *wireProtocol) opResponse() (int32, []byte, []byte, error) {
 		_, _, _, _ = p._parse_op_response()
 		b, err = p.recvPackets(4)
 		if err != nil {
-			debugPrint(p, fmt.Sprintf("opResponse: recvPackets error %s", err))
+			errorPrintf(p, "opResponse: recvPackets error %s", err)
 			return 0, nil, nil, err
 		}
 	}
@@ -1302,13 +1306,13 @@ func (p *wireProtocol) opSqlResponse(xsqlda []xSQLVAR) ([]driver.Value, error) {
 	debugPrint(p, "opSqlResponse")
 	b, err := p.recvPackets(4)
 	if err != nil {
-		debugPrint(p, fmt.Sprintf("opSqlResponse: recvPackets error %s", err))
+		errorPrintf(p, "opSqlResponse: recvPackets error %s", err)
 		return nil, err
 	}
 	for bytes_to_bint32(b) == op_dummy {
 		b, err = p.recvPackets(4)
 		if err != nil {
-			debugPrint(p, fmt.Sprintf("opSqlResponse: recvPackets error %s", err))
+			errorPrintf(p, "opSqlResponse: recvPackets error %s", err)
 			return nil, err
 		}
 	}
@@ -1319,7 +1323,7 @@ func (p *wireProtocol) opSqlResponse(xsqlda []xSQLVAR) ([]driver.Value, error) {
 
 	b, err = p.recvPackets(4)
 	if err != nil {
-		debugPrint(p, fmt.Sprintf("opSqlResponse: recvPackets error %s", err))
+		errorPrintf(p, "opSqlResponse: recvPackets error %s", err)
 		return nil, err
 	}
 	// count := int(bytes_to_bint32(b))
@@ -1332,7 +1336,7 @@ func (p *wireProtocol) opSqlResponse(xsqlda []xSQLVAR) ([]driver.Value, error) {
 			if x.ioLength() < 0 {
 				b, err = p.recvPackets(4)
 				if err != nil {
-					debugPrint(p, fmt.Sprintf("opSqlResponse: recvPackets error %s", err))
+					errorPrintf(p, "opSqlResponse: recvPackets error %s", err)
 					return nil, err
 				}
 				ln = int(bytes_to_bint32(b))
@@ -1341,18 +1345,18 @@ func (p *wireProtocol) opSqlResponse(xsqlda []xSQLVAR) ([]driver.Value, error) {
 			}
 			raw_value, err := p.recvPacketsAlignment(ln)
 			if err != nil {
-				debugPrint(p, fmt.Sprintf("opSqlResponse: recvPacketsAlignment error %s", err))
+				errorPrintf(p, "opSqlResponse: recvPacketsAlignment error %s", err)
 				return nil, err
 			}
 			b, err = p.recvPackets(4)
 			if err != nil {
-				debugPrint(p, fmt.Sprintf("opSqlResponse: recvPackets error %s", err))
+				errorPrintf(p, "opSqlResponse: recvPackets error %s", err)
 				return nil, err
 			}
 			if bytes_to_bint32(b) == 0 { // Not NULL
 				r[i], err = x.value(raw_value)
 				if err != nil {
-					debugPrint(p, fmt.Sprintf("opSqlResponse: recvPackets error %s", err))
+					errorPrintf(p, "opSqlResponse: recvPackets error %s", err)
 					return nil, err
 				}
 			}
@@ -1366,7 +1370,7 @@ func (p *wireProtocol) opSqlResponse(xsqlda []xSQLVAR) ([]driver.Value, error) {
 		null_indicator := new(big.Int)
 		b, err := p.recvPacketsAlignment(n)
 		if err != nil {
-			debugPrint(p, fmt.Sprintf("opSqlResponse: recvPackets error %s", err))
+			errorPrintf(p, "opSqlResponse: recvPackets error %s", err)
 			return nil, err
 		}
 		for n = len(b); n > 0; n-- {
@@ -1382,7 +1386,7 @@ func (p *wireProtocol) opSqlResponse(xsqlda []xSQLVAR) ([]driver.Value, error) {
 			if x.ioLength() < 0 {
 				b, err = p.recvPackets(4)
 				if err != nil {
-					debugPrint(p, fmt.Sprintf("opSqlResponse: recvPackets error %s", err))
+					errorPrintf(p, "opSqlResponse: recvPackets error %s", err)
 					return nil, err
 				}
 				ln = int(bytes_to_bint32(b))
@@ -1391,12 +1395,12 @@ func (p *wireProtocol) opSqlResponse(xsqlda []xSQLVAR) ([]driver.Value, error) {
 			}
 			raw_value, err := p.recvPacketsAlignment(ln)
 			if err != nil {
-				debugPrint(p, fmt.Sprintf("opSqlResponse: recvPacketsAlignment error %s", err))
+				errorPrintf(p, "opSqlResponse: recvPacketsAlignment error %s", err)
 				return nil, err
 			}
 			r[i], err = x.value(raw_value)
 			if err != nil {
-				debugPrint(p, fmt.Sprintf("opSqlResponse: value(raw_value) error %s", err))
+				errorPrintf(p, "opSqlResponse: value(raw_value) error %s", err)
 				return nil, err
 			}
 		}
@@ -1409,13 +1413,13 @@ func (p *wireProtocol) createBlob(value []byte, transHandle int32) ([]byte, erro
 	buf := p.suspendBuffer()
 	err := p.opCreateBlob2(transHandle)
 	if err != nil {
-		debugPrintf(p, "createBlob: opCreateBlob2 error %s\n", err)
+		errorPrintf(p, "createBlob: opCreateBlob2 error %s\n", err)
 		return nil, err
 	}
 	blobHandle, blobId, _, err := p.opResponse()
 	if err != nil {
 		p.resumeBuffer(buf)
-		debugPrintf(p, "createBlob: opResponse error %s\n", err)
+		errorPrintf(p, "createBlob: opResponse error %s\n", err)
 		return blobId, err
 	}
 
@@ -1427,12 +1431,12 @@ func (p *wireProtocol) createBlob(value []byte, transHandle int32) ([]byte, erro
 		}
 		err := p.opPutSegment(blobHandle, value[i:end])
 		if err != nil {
-			debugPrintf(p, "createBlob: opPutSegment error %s\n", err)
+			errorPrintf(p, "createBlob: opPutSegment error %s\n", err)
 			return nil, err
 		}
 		_, _, _, err = p.opResponse()
 		if err != nil {
-			debugPrintf(p, "createBlob: opResponse error %s\n", err)
+			errorPrintf(p, "createBlob: opResponse error %s\n", err)
 			return nil, err
 		}
 		i += BLOB_SEGMENT_SIZE
@@ -1446,7 +1450,7 @@ func (p *wireProtocol) createBlob(value []byte, transHandle int32) ([]byte, erro
 	_, _, _, err = p.opResponse()
 	if err != nil {
 		p.resumeBuffer(buf)
-		debugPrintf(p, "createBlob: opResponse error %s\n", err)
+		errorPrintf(p, "createBlob: opResponse error %s\n", err)
 		return nil, err
 	}
 
